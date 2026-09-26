@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>claudeify</title>
+<style>
+  :root{
+    --bg:#faf9f7; --panel:#fff; --ink:#1d1b18; --muted:#6b6660;
+    --line:#e4e0da; --accent:#b4552d; --accent-soft:#f3e7e0;
+    --good:#3f7d4e; --warn:#a8761c; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#171614;--panel:#201e1b;--ink:#eae7e2;--muted:#9b948b;
+          --line:#333029;--accent:#d97a4e;--accent-soft:#2e241e;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;}
+  header{padding:22px 24px 14px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:19px;letter-spacing:-.01em}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px}
+  main{max-width:1180px;margin:0 auto;padding:20px 24px 60px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  label.cap{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+            color:var(--muted);margin-bottom:6px;font-weight:600}
+  textarea{width:100%;min-height:260px;resize:vertical;background:transparent;color:var(--ink);
+           border:0;outline:none;font:14px/1.6 inherit}
+  #out{min-height:260px;white-space:pre-wrap;word-wrap:break-word;font:14px/1.6 inherit}
+  #out:empty::before{content:"Converted text appears here.";color:var(--muted)}
+  .controls{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin:16px 0}
+  .ctl{display:flex;flex-direction:column;gap:4px}
+  select,input[type=number]{background:var(--panel);color:var(--ink);border:1px solid var(--line);
+           border-radius:7px;padding:7px 9px;font:14px inherit;min-width:120px}
+  .chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);padding-bottom:8px}
+  button{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:10px 20px;
+         font:600 14px inherit;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);
+               padding:6px 12px;font-weight:500;font-size:13px}
+  .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px}
+  .meter{height:7px;background:var(--line);border-radius:99px;overflow:hidden;margin:10px 0 6px}
+  .meter i{display:block;height:100%;background:var(--accent);width:0;transition:width .4s}
+  .score{font:600 26px var(--mono);letter-spacing:-.02em}
+  .verdict{font-size:13px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px}
+  td{padding:4px 0;border-bottom:1px solid var(--line);color:var(--muted)}
+  td:last-child{text-align:right;font-family:var(--mono);color:var(--ink)}
+  .bars{margin-top:10px}
+  .bar{display:grid;grid-template-columns:150px 1fr 42px;gap:8px;align-items:center;
+       font-size:12px;color:var(--muted);margin-bottom:5px}
+  .bar b{height:6px;background:var(--accent-soft);border-radius:99px;position:relative}
+  .bar b i{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:99px}
+  .bar span:last-child{text-align:right;font-family:var(--mono);color:var(--ink)}
+  .note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5}
+  .err{color:var(--accent);font-size:13px;margin-top:10px;white-space:pre-wrap}
+  .pill{display:inline-block;font-size:11px;font-family:var(--mono);padding:2px 7px;
+        border-radius:99px;background:var(--accent-soft);color:var(--accent);margin-left:6px}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);
+        border-top-color:var(--accent);border-radius:50%;animation:s .7s linear infinite;
+        vertical-align:-2px;margin-right:6px}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>claude<span>ify</span></h1>
+  <div class="sub">Local register transformer &mdash; rewrites your text into assistant prose, keeps your meaning, and scores how detectable the result is. Nothing leaves this machine.</div>
+</header>
+
+<main>
+  <div class="grid">
+    <div class="card">
+      <div class="row"><label class="cap" style="margin:0">Your text</label>
+        <span class="verdict" id="incount">0 words</span></div>
+      <textarea id="in" placeholder="Type or paste anything here. Notes, a rant, a half-formed thought, complete nonsense &mdash; it all gets the same treatment."></textarea>
+    </div>
+    <div class="card">
+      <div class="row"><label class="cap" style="margin:0">Converted</label>
+        <button class="ghost" id="copy">Copy</button></div>
+      <div id="out"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><label class="cap">Voice</label>
+      <select id="profile">
+        <option value="generic" selected>Generic AI</option>
+        <option value="claude">Claude's tics</option>
+      </select></div>
+    <div class="ctl"><label class="cap">Intensity</label>
+      <select id="intensity">
+        <option value="subtle">Subtle</option>
+        <option value="standard" selected>Standard</option>
+        <option value="maximal">Maximal</option>
+      </select></div>
+    <div class="ctl"><label class="cap">Shape</label>
+      <select id="shape">
+        <option value="auto" selected>Match input</option>
+        <option value="prose">Prose</option>
+        <option value="structured">Bullets</option>
+      </select></div>
+    <div class="ctl"><label class="cap">Model</label>
+      <select id="backend"></select></div>
+    <div class="ctl"><label class="cap" title="Higher target = more style, more invented content. Measured: target 70 at 1 pass gives 0.76 invented claims per 100 words; target 75 at 3 passes gives 3.13.">Target score ↕ fidelity</label>
+      <input type="number" id="target" value="" min="0" max="100" step="5" placeholder="auto"></div>
+    <div class="ctl"><label class="cap">Max passes</label>
+      <input type="number" id="passes" value="3" min="1" max="5"></div>
+    <label class="chk"><input type="checkbox" id="judge" checked> perplexity pass</label>
+    <label class="chk"><input type="checkbox" id="disclosure"> visible AI notice</label>
+    <label class="chk"><input type="checkbox" id="invisible"> invisible tag</label>
+    <label class="chk" title="Synonym swap toward tier-1 vocabulary after generation. Cannot invent content, but headroom is small (~1 swap per 100 words) because the model already writes formally."><input type="checkbox" id="lexical"> lexical boost</label>
+    <button id="go">Convert</button>
+    <button class="ghost" id="scoreonly">Score only</button>
+    <button class="ghost" id="checkmeaning">Check meaning</button>
+  </div>
+  <div class="err" id="err"></div>
+
+  <div class="grid" style="margin-top:4px">
+    <div class="card">
+      <label class="cap">AI-detectability</label>
+      <div class="row" style="align-items:baseline">
+        <div><span class="score" id="score">&mdash;</span>
+             <span class="verdict">/ 100</span></div>
+        <div class="verdict" id="verdict"></div>
+      </div>
+      <div class="meter"><i id="bar"></i></div>
+      <div class="verdict" id="fitnote"></div>
+      <div class="row" style="align-items:baseline;margin-top:12px">
+        <div><span class="verdict">style density</span>
+             <b style="font-family:var(--mono);font-size:15px" id="density">&mdash;</b>
+             <span class="verdict" id="densitynote"></span></div>
+      </div>
+      <div class="meter" style="height:4px"><i id="dbar"></i></div>
+      <div class="verdict" id="delta"></div>
+      <div class="bars" id="bars"></div>
+      <div class="note">Higher is the goal here. The score blends surface style markers with how
+        predictable a local model finds the text &mdash; the same perplexity family that public
+        detectors are built on. It is a rehearsal, not a verdict from any real detector.</div>
+    </div>
+    <div class="card">
+      <label class="cap">Measurements</label>
+      <table id="raw"><tbody></tbody></table>
+      <div class="note" id="passlog"></div>
+      <div id="fidelity"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const LABELS = {
+  // fitted-model feature names
+  tier1_per_1k:"tier-1 vocabulary", template_per_1k:"template phrasing",
+  assistant_per_1k:"assistant register", hedge_per_1k:"hedging",
+  emdash_per_1k:"em dashes", semicolon_per_1k:"semicolons",
+  antithesis_per_1k:"not-X-but-Y", tricolon_per_1k:"rule of three",
+  second_person_per_1k:"second person", claudism_per_1k:"signature vocabulary",
+  paren_per_1k:"parentheticals", but_opener_per_1k:'"But" openers',
+  fragment_rate:"punchy fragments", sentence_len_cv:"sentence length variance",
+  sentence_len_mean:"mean sentence length", paragraph_len_cv:"paragraph variance",
+  bullet_lines:"bullet lines", bold_runs:"bold runs",
+  // heuristic contribution names
+  claudisms:"signature vocabulary", fragments:"punchy fragments",
+  parentheticals:"parentheticals", but_openers:'"But" openers',
+  tier1_vocabulary:"tier-1 vocabulary", template_phrasing:"template phrasing",
+  assistant_register:"assistant register", hedging:"hedging",
+  em_dash_rate:"em dashes", antithesis:"not-X-but-Y", tricolon:"rule of three",
+  second_person:"second person", low_burstiness:"even sentence length",
+  structural_scaffold:"bullets / bold", uniform_paragraphs:"even paragraphs"
+};
+const ROWS = [
+  ["n_words","words"],["n_sentences","sentences"],
+  ["sentence_len_mean","mean sentence length"],["sentence_len_cv","sentence length CV"],
+  ["emdash_per_1k","em dashes /1k words"],["hedge_per_1k","hedges /1k words"],
+  ["tier1_per_1k","tier-1 words /1k"],["template_per_1k","template phrases /1k"],
+  ["antithesis_per_1k","antitheses /1k"],["tricolon_per_1k","tricolons /1k"],
+  ["claudism_per_1k","Claudisms /1k"],["fragment_rate","fragment rate"],
+  ["paren_per_1k","parentheticals /1k"]
+];
+
+function countWords(){
+  const w = ($('in').value.match(/\S+/g)||[]).length;
+  $('incount').textContent = w + (w===1?' word':' words');
+}
+$('in').addEventListener('input', countWords);
+countWords();
+
+fetch('/api/health').then(r=>r.json()).then(h=>{
+  const sel = $('backend');
+  for (const [name, st] of Object.entries(h.backends)) {
+    const o = document.createElement('option');
+    o.value = name; o.textContent = name+' — '+st.model+(st.up?'':' (down)');
+    o.disabled = !st.up;
+    if (name==='gemma26' && st.up) o.selected = true;
+    sel.appendChild(o);
+  }
+}).catch(()=>{});
+
+function render(report, inScore, attempts) {
+  const s = report.score, sty = report.stylometric, pred = report.predictability;
+  $('score').textContent = s.toFixed(1);
+  $('bar').style.width = Math.min(100,s) + '%';
+  $('verdict').textContent = report.verdict;
+  const dens = sty.style_density;
+  if (dens != null) {
+    $('density').textContent = dens.toFixed(1);
+    $('dbar').style.width = Math.min(100,dens) + '%';
+    $('densitynote').textContent = ' — what the retry loop targets';
+  }
+  $('fitnote').textContent = sty.weights === 'fitted'
+    ? 'fitted logistic model — cross-validated AUC ' + sty.cv_auc.toFixed(3)
+      + ', holds across held-out generators'
+    : 'hand-picked weights (no fit loaded)';
+  $('delta').textContent = (inScore==null) ? '' :
+    'your text scored ' + inScore.toFixed(1) + ' → ' + s.toFixed(1)
+      + '  (+' + (s-inScore).toFixed(1) + ')';
+
+  $('bars').innerHTML = Object.entries(sty.contributions).map(([k,v]) =>
+    '<div class="bar"><span'+(v.pushes==='human'?' style="opacity:.55"':'')+'>'
+    +(LABELS[k]||k)+(v.pushes==='human'?' ↓':'')+'</span>'
+    +'<b><i style="width:'+(v.strength*100).toFixed(0)+'%'
+    +(v.pushes==='human'?';background:var(--muted)':'')+'"></i></b>'
+    +'<span>'+(v.strength*100).toFixed(0)+'</span></div>').join('');
+
+  let rows = ROWS.map(([k,l]) => sty.raw[k]==null ? '' :
+    '<tr><td>'+l+'</td><td>'+(typeof sty.raw[k]==='number'
+      ? (Number.isInteger(sty.raw[k])?sty.raw[k]:sty.raw[k].toFixed(2))
+      : sty.raw[k])+'</td></tr>').join('');
+  rows += '<tr><td>style density</td><td>'+(sty.style_density||0).toFixed(1)+'</td></tr>';
+  rows += '<tr><td>weights</td><td>'+(sty.weights||'?')+'</td></tr>';
+  if (pred && pred.available) {
+    rows += '<tr><td>est. perplexity</td><td>'+pred.perplexity_est+'</td></tr>'
+         +  '<tr><td>top-1 agreement</td><td>'+(pred.top1_agreement*100).toFixed(0)+'%</td></tr>'
+         +  '<tr><td>mean logprob</td><td>'+pred.mean_logprob+'</td></tr>'
+         +  '<tr><td>predictability score</td><td>'+pred.score.toFixed(1)+'</td></tr>';
+  } else if (pred) {
+    rows += '<tr><td>predictability</td><td>'+(pred.reason||'n/a')+'</td></tr>';
+  }
+  $('raw').querySelector('tbody').innerHTML = rows;
+  $('passlog').textContent = attempts
+    ? 'passes (style density): ' + attempts.map(a=>'#'+a.attempt+' → '+(a.style_density??a.score).toFixed(1)).join('   ')
+    : '';
+}
+
+async function post(url, body, btn, label) {
+  $('err').textContent = '';
+  const old = btn.textContent;
+  btn.disabled = true; $('go').disabled = true; $('scoreonly').disabled = true;
+  btn.innerHTML = '<span class="spin"></span>' + label;
+  try {
+    const r = await fetch(url, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP '+r.status));
+    return d;
+  } catch (e) {
+    $('err').textContent = 'Error: ' + e.message;
+    return null;
+  } finally {
+    btn.disabled = false; $('go').disabled = false; $('scoreonly').disabled = false;
+    btn.textContent = old;
+  }
+}
+
+$('go').onclick = async () => {
+  const text = $('in').value.trim();
+  if (!text) { $('err').textContent = 'Nothing to convert.'; return; }
+  const d = await post('/api/convert', {
+    text, profile:$('profile').value,
+    intensity:$('intensity').value, shape:$('shape').value,
+    backend:$('backend').value, target:($('target').value===''?null:+$('target').value),
+    max_attempts:+$('passes').value, use_judge:$('judge').checked,
+    disclosure:$('disclosure').checked, invisible:$('invisible').checked, lexical:$('lexical').checked
+  }, $('go'), 'Converting…');
+  if (!d) return;
+  $('out').textContent = d.output;
+  render(d.report, d.input_report.score, d.attempts);
+};
+
+$('scoreonly').onclick = async () => {
+  const text = ($('out').textContent.trim() || $('in').value.trim());
+  if (!text) { $('err').textContent = 'Nothing to score.'; return; }
+  const d = await post('/api/score', {text, use_judge:$('judge').checked, profile:$('profile').value},
+                       $('scoreonly'), 'Scoring…');
+  if (d) render(d, null, null);
+};
+
+$('checkmeaning').onclick = async () => {
+  const original = $('in').value.trim(), rewrite = $('out').textContent.trim();
+  if (!original || !rewrite) { $('err').textContent = 'Convert something first.'; return; }
+  const d = await post('/api/verify', {original, rewrite}, $('checkmeaning'), 'Checking…');
+  if (!d) return;
+  const box = $('fidelity');
+  if (!d.available) { box.innerHTML = '<div class="note">Meaning check unavailable: '
+      + (d.reason||'') + '</div>'; return; }
+  let html = '<div class="note" style="margin-top:12px"><b style="color:'
+    + (d.faithful ? 'var(--good)' : 'var(--warn)') + '">' + d.verdict + '</b>';
+  for (const k of ['invented_fact','contradicted','dropped','rhetorical','evaluative'])
+    for (const it of (d[k]||[]))
+      html += '<br><span class="pill">' + k + '</span> ' + it;
+  if (d.faithful) html += '<br>No propositions added, dropped, or contradicted.';
+  box.innerHTML = html + '</div>';
+};
+
+$('copy').onclick = () => {
+  const t = $('out').textContent;
+  if (!t) return;
+  navigator.clipboard.writeText(t).then(() => {
+    $('copy').textContent = 'Copied'; setTimeout(()=>$('copy').textContent='Copy', 1200);
+  });
+};
+
+$('in').addEventListener('keydown', e => {
+  if ((e.metaKey||e.ctrlKey) && e.key === 'Enter') $('go').click();
+});
+</script>
+</body>
+</html>

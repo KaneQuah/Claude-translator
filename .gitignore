@@ -1,0 +1,12 @@
+# Training corpora are NOT redistributable -- see ATTRIBUTION.md.
+# corpus/raid-sample.jsonl and the *-sample/-combined files embed verbatim
+# third-party human text (news, books, poetry, Reddit, Wikipedia) that RAID
+# aggregated but does not own. Rebuild them locally instead:
+#     python3 sample_raid.py && python3 gen_modern_par.py 200
+corpus/
+
+__pycache__/
+*.pyc
+bench-*.json
+yield-results*.json
+marker-tokens.json
