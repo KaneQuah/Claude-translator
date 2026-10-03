@@ -46,7 +46,9 @@ The target voice, concretely:
   leverage, underscore, navigate, comprehensive, holistic, worth, genuinely.
 - Keep sentence length EVEN -- most sentences between 15 and 25 words. Do not
   mix very short punchy fragments with long ones. Metronomic, not bursty.
-- Address the reader as "you" where the source has any addressee at all.
+- Keep the author's own grammatical person. If the source says "I", the output says "I"; if it
+  already addresses a reader as "you", keep that. Never turn the author into "you", and never
+  describe the text from outside ("The text describes...", "It appears that you...").
 - Close on synthesis or a light offer, never on a hard stop.
 """
 
@@ -147,7 +149,7 @@ RETRY_HINTS = {
     "em_dash_rate":       "use more em dashes for parenthetical asides",
     "antithesis":         "add at least one more \"it's not just X -- it's Y\" or \"less about X than Y\" construction",
     "tricolon":           "group items into 'A, B, and C' triples",
-    "second_person":      "address the reader as 'you' more often",
+    "second_person":      "if the source already addresses a reader, keep addressing them as 'you'; never convert the author's 'I' into 'you'",
     "low_burstiness":     "even out sentence length -- keep almost every sentence between 15 and 25 words, with no short fragments",
     "structural_scaffold": "add a short bulleted list with **bold lead-ins**",
     "uniform_paragraphs": "make the paragraphs closer to the same length as each other",

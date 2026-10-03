@@ -150,6 +150,15 @@ ai-ish     density 94.0   cv=0.24   em dashes/1k=22.2
 Neither number is a verdict from a real detector. Treat detectability as
 calibrated-for-RAID and density as ordinal.
 
+**It has now been checked against one, and it did not hold up.** On ten texts run
+through [Pangram](https://www.pangram.com) (see RESEARCH.md), the detectability score
+agreed with Pangram on the tool's own generic output and **missed every plain LLM
+rewrite and every Claude-voice output**: it called plain rewrites human-looking
+(31–33) when Pangram flagged them, and called the Claude voice 90–99.6 when Pangram
+read it as 100% human. Ten texts is a sanity check, not a benchmark, but a 4-for-4
+miss on one comparison is not noise. Read the number as "how much this resembles
+Gemma/Qwen essay prose", not "will a real detector flag it".
+
 ## Marking
 
 Style makes text *read* as machine-written. If you want a signal that survives

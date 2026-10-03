@@ -341,6 +341,57 @@ The page also says Claude and Gemini output is more concise and less given to
 "broader context" flourishes than ChatGPT and Grok. That argues against copying
 its puffery markers into the `claude` profile even if they had scored.
 
+### An external check: Pangram
+
+Every score above is a proxy fitted on Gemma/Qwen output. Pangram 4.0 (free tier, 20
+credits, no login, 1 credit per 100 words, 50-word minimum) is the first independent
+detector it has been run against. Two human sources (a 122-word movie review and an
+86-word game-forum post) were each restyled several ways by the same backend
+(Gemma-4-26B-A4B). "Claude writes" is me writing the same content from scratch.
+
+| text | Pangram | words | our detectability | our density |
+|---|---|---|---|---|
+| review, human original | **Human 100%** | 122 | 49.0 | 19.2 |
+| review, plain rewrite (no register) | **AI 74% + assisted 26%** | 124 | 33.2 | 26.3 |
+| review, tool generic | AI 30% + **assisted 70%** | 228 | 100.0 | 84.8 |
+| review, tool claude profile | **Human 100%** | 170 | 99.6 | 62.0 |
+| review, Claude writes | **Human 100%** | 135 | n/a | n/a |
+| game post, plain rewrite | **AI-assisted 100%** | 96 | 30.6 | 17.4 |
+| game post, tool generic | **AI-generated 100%** | 213 | 99.9 | 70.6 |
+| game post, tool claude profile | **Human 100%** | 122 | 90.1 | 55.9 |
+| game post, Claude writes | **Human 100%** | 78 | 36.6 | 14.0 |
+| game post, generic, first person kept | **AI-generated 100%** | 131 | 100.0 | 77.2 |
+
+Pangram marked every result under ~140 words "confidence limited — short text".
+One generation per cell, so this is a sanity check and not a benchmark.
+
+What it shows:
+
+- **Our detectability score missed on every plain rewrite and every claude-profile
+  output** (four of four misses on those two comparisons). It agreed only on the
+  generic voice. It measures resemblance to the generators it was fitted on, whose
+  dominant features are markdown bold and bullets, not "would a real detector flag
+  this".
+- **A plain, unstyled rewrite by the same model is already flagged**, as AI-assisted
+  or AI. Heavy marker injection is not what a trained detector keys on.
+- **How much of the source wording survives decides the verdict.** The generic voice
+  was 30% AI on the review (which kept phrases like "connubial bliss") and 100% on the
+  game post (where almost nothing survived). Pangram separates "AI-generated" from
+  "AI-assisted", and a restyle that keeps the author's words reads as assisted. That
+  collides directly with the brief to keep the user's content.
+- **The two goals conflict at this length.** The claude profile sounds like Claude
+  and reads as human; so did Claude's own from-scratch prose, twice. Pangram claims
+  99.8% on Claude Opus 5 on its own benchmark, but those are long documents; short
+  personal-voice text is where its confidence is limited.
+- **Generic voice, first person kept, is still flagged 100%.** That matters because it
+  isolates the cause. The first generic outputs had silently turned "I have recently
+  started playing XC2" into "It appears that you have recently begun playing XC2" and
+  then commented on it, which was a bug in `REGISTER` ("address the reader as 'you'"),
+  not a feature. Removing it did not cost the flag, so the fix is free.
+
+Not tested, for lack of credits: texts over ~250 words, where Pangram is confident;
+more than one sample per cell; a second backend.
+
 ## 5. Prior art
 
 Worth knowing what exists, because the market runs almost entirely the other way.
