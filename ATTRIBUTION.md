@@ -27,6 +27,7 @@ the corpus should get RAID from the source.
 |---|---|---|
 | RAID benchmark (human text, the fitting corpus) | Dugan et al., ACL 2024 — `liamdugan/raid` | MIT |
 | `avoid-ai-writing` (the P0/P1/P2 marker taxonomy, inverted here) | `conorbronsdon/avoid-ai-writing` | MIT |
+| *Wikipedia:Signs of AI writing* (marker catalogue tested in `wiki_markers_eval.py`) | en.wikipedia.org | CC BY-SA 4.0 |
 | llama.cpp (the inference server this talks to) | `ggml-org/llama.cpp` | MIT |
 | Gemma 4 (default restyle backend) | `google/gemma-4-26B-A4B-it` | Apache-2.0 |
 | Qwen 3.6 (fidelity auditor) | `Qwen/Qwen3.6-35B-A3B` | Apache-2.0 |
@@ -35,6 +36,11 @@ Both model families are Apache-2.0, so there is no custom-terms or
 acceptable-use rider to pass on to users — a change from Gemma 3, which shipped
 under Google's own Gemma Terms of Use. Model weights are never bundled here; the
 tool talks to a server you run.
+
+The marker phrase lists in `wiki_markers_eval.py` are drawn from the Wikipedia page
+above. They are observations about word choice, not its prose, but the editors who
+compiled them did the work, and the page is CC BY-SA, so it is credited here.
+None of them is used by the scorer; see RESEARCH.md for why.
 
 The Claude-tic lexicon in `detect.py` was compiled from public discussion
 (r/ClaudeAI, r/ClaudeCode, Hacker News). Word lists of this kind are facts

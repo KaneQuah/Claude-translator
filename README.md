@@ -212,6 +212,7 @@ lexical.py      content-safe synonym boost (--lexical)
 bench.py        model comparison        crossgen_eval.py  held-out-generator check
 fit_weights.py  logistic fit            yield_test.py     SFT-viability measurement
 sample_raid.py  human corpus            gen_modern_par.py machine corpus
+wiki_markers_eval.py  Wikipedia "signs of AI writing" markers, measured (not adopted)
 RESEARCH.md     detection, markers, watermarking, prior art
 ATTRIBUTION.md  licences, and what is deliberately not shipped
 ```

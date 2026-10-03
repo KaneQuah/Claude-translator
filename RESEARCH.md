@@ -300,6 +300,47 @@ lexicon is not a machine-vs-human discriminator at all — it identifies one
 vendor's voice, which is precisely why it lives in the `claude` profile and not
 in the generic detector.
 
+### Wikipedia's "Signs of AI writing": measured, not adopted
+
+[Wikipedia:Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing)
+is the most thorough public catalogue of machine-prose tells, and it dates them by
+model generation (*delve* peaked in 2023 and "dropped off sharply in 2025").
+Thirteen of its markers that survive outside an encyclopedia were turned into
+features and tested in `wiki_markers_eval.py` against the same 680-text modern
+corpus the fit uses (340 human, 340 Gemma-4 / Qwen-3.6).
+
+| finding | number |
+|---|---|
+| Wikipedia markers, single-feature AUC | 0.475 – 0.555 (chance) |
+| Rate in machine text | 0.0 – 0.7 per 1k words, ~0.03 occurrences per text |
+| Added to the 18 existing features, 5-fold CV × 3 seeds | **+0.0004** AUC (seed noise ±0.0011) |
+| Held out, Gemma → Qwen | +0.001 |
+| Held out, Qwen → Gemma | **−0.020** |
+
+They are real tells for GPT-4o-era encyclopedic text and are nearly absent from
+current-generation output, so they cannot add signal here. Not adopted.
+
+Three side findings were more useful than the lexicon:
+
+- **Hedging is not a machine tell.** `hedge_per_1k` has AUC 0.536 and 0.3% of the
+  fitted weight, and the page lists hedging words (*tends to*, *perhaps*, *very*)
+  among markers of *human* writing. The generic heuristic still gives hedging 11
+  points and `REGISTER` tells the model to hedge more. Unchanged for now, because
+  swapping one unvalidated heuristic for another is no improvement, but this is
+  the first thing to A/B against an independent detector.
+- **Curly quotes are the strongest single feature in the corpus** (AUC 0.713,
+  9.8 vs 4.1 per 1k), and that is almost certainly a generator fingerprint:
+  Gemma and Qwen emit U+2019, while the page says Claude and Gemini typically do
+  not. It is the "fits the model it was trained on" failure RAID warns about, and
+  it is why this feature was not added to the fit.
+- **Em dashes survive.** AUC 0.677 here, and the page cites a July 2026 study in
+  which only Claude still used them more than professional writers. That is
+  consistent with the `claude` profile's em-dash weight.
+
+The page also says Claude and Gemini output is more concise and less given to
+"broader context" flourishes than ChatGPT and Grok. That argues against copying
+its puffery markers into the `claude` profile even if they had scored.
+
 ## 5. Prior art
 
 Worth knowing what exists, because the market runs almost entirely the other way.
@@ -334,3 +375,5 @@ and the parody accounts.
 - PCMag, *Anthropic's Claude Will Now Add Invisible Watermarks* (Aug 2026).
 - `conorbronsdon/avoid-ai-writing` — the P0/P1/P2 audit taxonomy, inverted here,
   including the >60% L2 false-positive figure.
+- Wikipedia contributors, *Wikipedia:Signs of AI writing* (CC BY-SA 4.0) — the
+  marker catalogue tested in `wiki_markers_eval.py`; see "measured, not adopted".
