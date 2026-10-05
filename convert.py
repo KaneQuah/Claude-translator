@@ -134,7 +134,7 @@ def auto_target(n_words):
 def convert(text, intensity="standard", shape="auto", backend="gemma26",
             target=None, max_attempts=3, use_judge=True,
             disclosure=False, invisible=False, temperature=0.8,
-            profile="generic", preserve=False, lexical_boost=False):
+            profile="claude", preserve=False, lexical_boost=False):
     """Restyle `text` and keep retrying until it scores at or above `target`."""
     text = (text or "").strip()
     if not text:
@@ -266,9 +266,9 @@ if __name__ == "__main__":
     ap.add_argument("--no-judge", action="store_true", help="skip perplexity pass")
     ap.add_argument("--disclosure", action="store_true")
     ap.add_argument("--invisible", action="store_true")
-    ap.add_argument("-p", "--profile", default="generic",
+    ap.add_argument("-p", "--profile", default="claude",
                     choices=["generic", "claude"],
-                    help="generic assistant prose, or Claude's specific tics")
+                    help="Claude's register (default), or generic assistant prose")
     ap.add_argument("--preserve", action="store_true",
                     help="ban content-generating markers (antithesis, tricolon)")
     ap.add_argument("--lexical", action="store_true",

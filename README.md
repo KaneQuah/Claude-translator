@@ -2,6 +2,11 @@
 
 Paste text in, get it back in assistant voice. Your meaning, machine's register.
 
+The default voice is Claude's (`--profile claude`); `--profile generic` gives plain
+assistant prose. The choice matters for the score: on ten Pangram checks the
+generic voice was flagged and the Claude voice read as human, so the 0-100 number
+below measures resemblance to generic LLM essay prose, not to Claude.
+
 Everything runs against the llama.cpp servers already on this box. No network
 egress beyond `127.0.0.1`, no API keys, no third-party services, zero pip
 dependencies — Python standard library only.
@@ -36,7 +41,7 @@ the original and reports any claim that was added, dropped, or contradicted.
 | Local models only, no online APIs | llama.cpp on `:6767` / `:6768` / `:6770`; stdlib `urllib` to loopback only |
 | Keep the meaning of the original | Rule 2 of the system prompt, plus `verify.py` as an independent check |
 | Nonsense must survive as nonsense | Rule 3, weighted above fluency — the model is told not to repair anything |
-| Output *should* be flagged as AI | The scorer is the objective, not the enemy; optional visible and invisible AI markers |
+| Output should read as AI-written | The scorer drives the retry loop, but it is tuned to generic LLM prose; the default Claude voice is chosen for register, and an external detector may read it as human (see below) |
 | Simple paste-in UX | One page, one textarea, one button |
 
 On nonsense — this is the rule models fight hardest. Given *"purple mondays fold

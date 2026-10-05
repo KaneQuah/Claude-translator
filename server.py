@@ -79,7 +79,7 @@ class Handler(BaseHTTPRequestHandler):
                     use_judge=bool(data.get("use_judge", True)),
                     disclosure=bool(data.get("disclosure", False)),
                     invisible=bool(data.get("invisible", False)),
-                    profile=data.get("profile", "generic"),
+                    profile=data.get("profile", "claude"),
                     preserve=bool(data.get("preserve", False)),
                     lexical_boost=bool(data.get("lexical", False)),
                 )
@@ -99,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, detect.score_text(
                     text, use_model=bool(data.get("use_judge", True)),
                     base=convert.JUDGE["base"], model=convert.JUDGE["model"],
-                    profile=data.get("profile", "generic")))
+                    profile=data.get("profile", "claude")))
 
             return self._send(404, {"error": "not found"})
 
