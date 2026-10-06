@@ -35,6 +35,10 @@
   .ctl{display:flex;flex-direction:column;gap:4px}
   select,input[type=number]{background:var(--panel);color:var(--ink);border:1px solid var(--line);
            border-radius:7px;padding:7px 9px;font:14px inherit;min-width:120px}
+  .tipbtn{width:20px;height:20px;padding:0;border-radius:50%;border:1px solid var(--line);background:transparent;
+          color:var(--muted);font-size:12px;line-height:1;cursor:pointer}
+  .tip{flex-basis:100%;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+  .tip[hidden]{display:none}
   .chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);padding-bottom:8px}
   button{background:var(--accent);color:#fff;border:0;border-radius:7px;padding:10px 20px;
          font:600 14px inherit;cursor:pointer}
@@ -105,14 +109,16 @@
       </select></div>
     <div class="ctl"><label class="cap">Model</label>
       <select id="backend"></select></div>
-    <div class="ctl"><label class="cap" title="Higher target = more style, more invented content. Measured: target 70 at 1 pass gives 0.76 invented claims per 100 words; target 75 at 3 passes gives 3.13.">Target score ↕ fidelity</label>
+    <div class="ctl"><label class="cap" title="Blank means auto: the target scales with input length (30 for under 8 words, 42 under 20, 55 under 30, 65 under 60, 75 above), because short inputs have no material for markers and the model pads or invents to hit a high one. The loop retries until the style density reaches the target or Max passes runs out; it is not the headline score. Higher target means more style and more invented content. Measured: target 70 at 1 pass gives 0.76 invented claims per 100 words; target 75 at 3 passes gives 3.13.">Target score ↕ fidelity <button type="button" class="tipbtn" data-tip="targettip" aria-expanded="false" aria-controls="targettip" aria-label="What is the target score?">?</button></label>
       <input type="number" id="target" value="" min="0" max="100" step="5" placeholder="auto"></div>
     <div class="ctl"><label class="cap">Max passes</label>
       <input type="number" id="passes" value="3" min="1" max="5"></div>
-    <label class="chk"><input type="checkbox" id="judge" checked> perplexity pass</label>
+    <label class="chk" title="A small local model (Qwen 3.5 2B) reads the text and checks, at about two dozen sampled positions, how predictable each next word was. Machine-written text tends to be more predictable than human writing, which is the signal public detectors lean on, so this is a second opinion that does not depend on surface markers. It makes up 38% of the headline score. It does not steer the retries (those follow style density) and it adds a few seconds, so untick it for speed. It has not been validated on its own against an external detector."><input type="checkbox" id="judge" checked> perplexity pass<button type="button" class="tipbtn" data-tip="perptip" aria-expanded="false" aria-controls="perptip" aria-label="What is the perplexity pass?">?</button></label>
     <label class="chk"><input type="checkbox" id="disclosure"> visible AI notice</label>
     <label class="chk"><input type="checkbox" id="invisible"> invisible tag</label>
     <label class="chk" title="Synonym swap toward tier-1 vocabulary after generation. Cannot invent content, but headroom is small (~1 swap per 100 words) because the model already writes formally."><input type="checkbox" id="lexical"> lexical boost</label>
+    <div class="note tip" id="targettip" hidden><b>Target score.</b> Blank means auto: the target scales with input length (30 for under 8 words, 42 under 20, 55 under 30, 65 under 60, 75 above), because short inputs have no material for markers and the model pads or invents to hit a high one. The loop retries until the style density reaches the target or Max passes runs out; it is not the headline score. Higher target means more style and more invented content. Measured: target 70 at 1 pass gives 0.76 invented claims per 100 words; target 75 at 3 passes gives 3.13.</div>
+    <div class="note tip" id="perptip" hidden><b>Perplexity pass.</b> A small local model (Qwen 3.5 2B) reads the text and checks, at about two dozen sampled positions, how predictable each next word was. Machine-written text tends to be more predictable than human writing, which is the signal public detectors lean on, so this is a second opinion that does not depend on surface markers. It makes up 38% of the headline score. It does not steer the retries (those follow style density) and it adds a few seconds, so untick it for speed. It has not been validated on its own against an external detector.</div>
     <button id="go">Convert</button>
     <button class="ghost" id="scoreonly">Score only</button>
     <button class="ghost" id="checkmeaning">Check meaning</button>
@@ -194,7 +200,7 @@ fetch('/api/health').then(r=>r.json()).then(h=>{
   const sel = $('backend');
   for (const [name, st] of Object.entries(h.backends)) {
     const o = document.createElement('option');
-    o.value = name; o.textContent = name+' — '+st.model+(st.up?'':' (down)');
+    o.value = name; o.textContent = name+' — '+st.model+(st.up?(st.busy?' (busy)':''):' (down)');
     o.disabled = !st.up;
     if (name==='gemma26' && st.up) o.selected = true;
     sel.appendChild(o);
@@ -309,13 +315,39 @@ $('checkmeaning').onclick = async () => {
   box.innerHTML = html + '</div>';
 };
 
-$('copy').onclick = () => {
+// navigator.clipboard only exists in a secure context (https or localhost). Served
+// over plain http from a Tailscale/LAN address, as on a phone, it is undefined and
+// the old handler threw silently. The fallback must run inside the tap itself, so
+// it is synchronous; readonly + setSelectionRange is what iOS Safari needs.
+function legacyCopy(t) {
+  const ta = document.createElement('textarea');
+  ta.value = t; ta.readOnly = true;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select(); ta.setSelectionRange(0, t.length);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  return ok;
+}
+$('copy').onclick = async () => {
   const t = $('out').textContent;
   if (!t) return;
-  navigator.clipboard.writeText(t).then(() => {
-    $('copy').textContent = 'Copied'; setTimeout(()=>$('copy').textContent='Copy', 1200);
-  });
+  let ok = false;
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(t); ok = true; } catch (e) {}
+  }
+  if (!ok) ok = legacyCopy(t);
+  $('copy').textContent = ok ? 'Copied' : 'Copy failed: select the text';
+  setTimeout(() => $('copy').textContent = 'Copy', ok ? 1200 : 2500);
 };
+
+document.querySelectorAll('.tipbtn').forEach(b => b.onclick = e => {
+  e.preventDefault(); e.stopPropagation();
+  const box = $(b.dataset.tip), open = box.hidden;
+  box.hidden = !open;
+  b.setAttribute('aria-expanded', open);
+});
 
 $('in').addEventListener('keydown', e => {
   if ((e.metaKey||e.ctrlKey) && e.key === 'Enter') $('go').click();

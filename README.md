@@ -3,9 +3,11 @@
 Paste text in, get it back in assistant voice. Your meaning, machine's register.
 
 The default voice is Claude's (`--profile claude`); `--profile generic` gives plain
-assistant prose. The choice matters for the score: on ten Pangram checks the
-generic voice was flagged and the Claude voice read as human, so the 0-100 number
-below measures resemblance to generic LLM essay prose, not to Claude.
+assistant prose. The voice changes what the score means: generic is scored by a model
+fitted on human-vs-machine text, Claude by hand-picked weights that were never checked
+against a detector. On ten Pangram checks the generic voice was flagged and the Claude
+voice read as human. How the number is built, and what is and isn't validated, is in
+[SCORING.md](SCORING.md).
 
 Everything runs against the llama.cpp servers already on this box. No network
 egress beyond `127.0.0.1`, no API keys, no third-party services, zero pip
@@ -84,6 +86,8 @@ Left pane, your text. Right pane, the conversion. Underneath:
 `Ctrl`/`Cmd`+`Enter` in the input box converts.
 
 ## Scoring
+
+Full walk-through of the maths and the validation status: [SCORING.md](SCORING.md).
 
 Two numbers, because the score does two jobs that pull apart.
 

@@ -25,6 +25,7 @@ import threading
 import traceback
 import urllib.request
 from urllib.parse import urlsplit
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import convert
@@ -193,17 +194,26 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- health -----------------------------------------------------------
     @staticmethod
+    def _probe(name, cfg):
+        """A refused connection means down. A timeout means the server is alive
+        but busy (one slot, mid-generation): it must stay selectable, or the UI
+        silently falls back to the first backend that answered in time."""
+        try:
+            with urllib.request.urlopen(cfg["base"] + "/v1/models", timeout=4) as r:
+                json.loads(r.read().decode())
+            return name, {"up": True, "model": cfg["model"], "base": cfg["base"]}
+        except Exception as exc:
+            reason = getattr(exc, "reason", exc)
+            if isinstance(reason, (socket.timeout, TimeoutError)) or "timed out" in str(reason):
+                return name, {"up": True, "busy": True, "model": cfg["model"], "base": cfg["base"]}
+            return name, {"up": False, "model": cfg["model"],
+                          "base": cfg["base"], "error": str(exc)[:120]}
+
+    @staticmethod
     def _health():
-        out = {}
-        for name, cfg in convert.BACKENDS.items():
-            try:
-                with urllib.request.urlopen(cfg["base"] + "/v1/models", timeout=2) as r:
-                    json.loads(r.read().decode())
-                out[name] = {"up": True, "model": cfg["model"], "base": cfg["base"]}
-            except Exception as exc:
-                out[name] = {"up": False, "model": cfg["model"],
-                             "base": cfg["base"], "error": str(exc)[:120]}
-        return out
+        with ThreadPoolExecutor(max_workers=len(convert.BACKENDS)) as ex:
+            res = list(ex.map(lambda kv: Handler._probe(*kv), convert.BACKENDS.items()))
+        return dict(res)
 
 
 def main():
