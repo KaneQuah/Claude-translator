@@ -15,23 +15,12 @@ import re
 import secrets
 import urllib.request
 
+import backends
 import detect
 import lexical
 import sanitize
 import style
 
-BACKENDS = {
-    "heavy": {"base": "http://127.0.0.1:6767", "model": "qwen3.6-35b-a3b"},
-    "small": {"base": "http://127.0.0.1:6770", "model": "qwen3.5-2b"},
-    "mid":   {"base": "http://127.0.0.1:6768", "model": "qwen3-8b"},
-    # Gemma 4 on the P100. NOTE: llama.cpp orders CUDA devices fastest-first,
-    # so the P100 is CUDA1 unless CUDA_DEVICE_ORDER=PCI_BUS_ID is set.
-    # Gemma 4 is a thinking model -- the server needs --reasoning-budget 0 or
-    # the whole token budget goes to reasoning_content and content is empty.
-    "gemma12": {"base": "http://127.0.0.1:6772", "model": "gemma-4-12b"},
-    "gemma26": {"base": "http://127.0.0.1:6773", "model": "gemma-4-26b-a4b"},
-}
-JUDGE = {"base": "http://127.0.0.1:6770", "model": "qwen3.5-2b"}
 
 _THINK = re.compile(r"<think>.*?</think>\s*", re.S | re.I)
 _FENCE = re.compile(r"^\s*```[a-zA-Z]*\s*\n(.*?)\n?\s*```\s*$", re.S)
@@ -65,15 +54,10 @@ def _chat(messages, base, model, temperature=0.8, max_tokens=1600, timeout=300):
         "temperature": temperature,
         "top_p": 0.95,
         "max_tokens": max_tokens,
-        # :6767 defaults thinking ON; the per-request kwarg wins, no restart.
-        "chat_template_kwargs": {"enable_thinking": False},
     }
-    req = urllib.request.Request(
-        base + "/v1/chat/completions", data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        d = json.loads(r.read().decode())
+    d = backends.post_chat(payload, base, timeout)
     return _clean(d["choices"][0]["message"]["content"])
+
 
 
 def add_invisible_marker(text, label="AI-GENERATED"):
@@ -133,7 +117,7 @@ def auto_target(n_words):
     return 75.0
 
 
-def convert(text, intensity="standard", shape="auto", backend="gemma26",
+def convert(text, intensity="standard", shape="auto", backend=None,
             target=None, max_attempts=3, use_judge=True,
             disclosure=False, invisible=False, temperature=0.8,
             profile="claude", preserve=False, lexical_boost=False, timeout=300):
@@ -142,7 +126,8 @@ def convert(text, intensity="standard", shape="auto", backend="gemma26",
     if not text:
         raise ValueError("empty input")
 
-    cfg = BACKENDS.get(backend, BACKENDS["gemma26"])
+    cfg = backends.resolve(backend)
+    jdg = backends.snapshot()["judge"]
     sysmsg = style.system_prompt(intensity, shape, profile, preserve)
 
     # Short inputs starve the restyle instinct: with little to work from, the
@@ -211,8 +196,10 @@ def convert(text, intensity="standard", shape="auto", backend="gemma26",
         if not out:
             continue
         report = detect.score_text(
-            out, use_model=use_judge, base=JUDGE["base"],
-            model=JUDGE["model"], samples=24, profile=profile)
+            out, use_model=bool(use_judge and jdg),
+            base=(jdg or {}).get("base", ""), model=(jdg or {}).get("model", ""),
+            samples=24, profile=profile,
+            off_reason=("disabled" if jdg else "no llama.cpp judge configured (CLAUDEIFY_JUDGE)"))
         # Retries are driven by style density, not by the fitted probability:
         # the latter saturates and would stop the loop after one pass.
         density = report["stylometric"].get("style_density", report["score"])
@@ -256,7 +243,7 @@ def convert(text, intensity="standard", shape="auto", backend="gemma26",
         "input_report": detect.score_text(text, use_model=False, profile=profile),
         "profile": profile,
         "sanitized": sanitized,
-        "backend": backend,
+        "backend": backend or "auto",
         "model": cfg["model"],
     }
 
@@ -271,7 +258,8 @@ if __name__ == "__main__":
                     choices=["subtle", "standard", "maximal"])
     ap.add_argument("-s", "--shape", default="auto",
                     choices=["auto", "prose", "structured"])
-    ap.add_argument("-b", "--backend", default="gemma26", choices=list(BACKENDS))
+    ap.add_argument("-b", "--backend", default=None,
+                    help="model name as listed by your server (default: auto)")
     ap.add_argument("-t", "--target", type=float, default=None,
                     help="style target; default scales with input length")
     ap.add_argument("-n", "--max-attempts", type=int, default=3)

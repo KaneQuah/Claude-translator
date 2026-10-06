@@ -200,10 +200,23 @@ fetch('/api/health').then(r=>r.json()).then(h=>{
   const sel = $('backend');
   for (const [name, st] of Object.entries(h.backends)) {
     const o = document.createElement('option');
-    o.value = name; o.textContent = name+' — '+st.model+(st.up?(st.busy?' (busy)':''):' (down)');
+    o.value = name; o.textContent = (name===st.model ? name : name+' — '+st.model)
+      + (st.up?(st.busy?' (busy)':''):' (down)');
     o.disabled = !st.up;
-    if (name==='gemma26' && st.up) o.selected = true;
+    if (name===h.default) o.selected = true;
     sel.appendChild(o);
+  }
+  if (!h.default) {
+    const where = h.endpoints.map(e=>e.base).join(', ') || 'backends.json';
+    $('err').textContent = 'No models found at ' + where + '. Start Ollama and pull one '
+      + '(ollama pull gemma4:26b), or set CLAUDEIFY_ENDPOINT. See the README.';
+  }
+  if (!h.judge) {
+    const j = $('judge');
+    j.checked = false; j.disabled = true;
+    j.parentElement.title = 'Off: no llama.cpp server found for it. The perplexity pass needs '
+      + 'llama.cpp (Ollama cannot supply per-token probabilities). Run llama-server on port 8080 '
+      + 'or set CLAUDEIFY_JUDGE. Scores use style markers only.';
   }
 }).catch(()=>{});
 
@@ -301,7 +314,7 @@ $('scoreonly').onclick = async () => {
 $('checkmeaning').onclick = async () => {
   const original = $('in').value.trim(), rewrite = $('out').textContent.trim();
   if (!original || !rewrite) { $('err').textContent = 'Convert something first.'; return; }
-  const d = await post('/api/verify', {original, rewrite}, $('checkmeaning'), 'Checking…');
+  const d = await post('/api/verify', {original, rewrite, backend:$('backend').value}, $('checkmeaning'), 'Checking…');
   if (!d) return;
   const box = $('fidelity');
   if (!d.available) { box.innerHTML = '<div class="note">Meaning check unavailable: '

@@ -5,7 +5,7 @@ server.py -- local web UI for claudeify. Python stdlib only.
 
 Binds to loopback by default; run.sh binds 0.0.0.0 so a Tailscale or LAN device
 can reach it. Serves one page and three JSON endpoints; every model call goes to
-a llama.cpp server on 127.0.0.1, which is never exposed.
+the model servers you point it at (backends.py), which are never exposed by this server.
 
 There is no login, so reachability is the access control, in three layers:
   1. client address must fall in --allow (default: loopback, Tailscale
@@ -25,9 +25,9 @@ import threading
 import traceback
 import urllib.request
 from urllib.parse import urlsplit
-from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import backends
 import convert
 import detect
 import verify
@@ -131,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(HERE, "ui.html"), "rb") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
         if path == "/api/health":
-            return self._send(200, {"backends": self._health()})
+            return self._send(200, self._health())
         return self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -156,7 +156,7 @@ class Handler(BaseHTTPRequestHandler):
                     text,
                     intensity=data.get("intensity", "standard"),
                     shape=data.get("shape", "auto"),
-                    backend=data.get("backend", "gemma26"),
+                    backend=data.get("backend") or None,
                     target=(float(data["target"]) if data.get("target") not in (None, "", "auto") else None),
                     max_attempts=int(data.get("max_attempts", 3)),
                     use_judge=bool(data.get("use_judge", True)),
@@ -173,16 +173,19 @@ class Handler(BaseHTTPRequestHandler):
                 rew = (data.get("rewrite") or "")[:MAX_INPUT]
                 if not orig.strip() or not rew.strip():
                     return self._send(400, {"error": "need both original and rewrite"})
-                return self._send(200, verify.check(orig, rew))
+                return self._send(200, verify.check(orig, rew, backend=data.get("backend") or None))
 
             if path == "/api/score":
                 text = (data.get("text") or "")[:MAX_INPUT]
                 if not text.strip():
                     return self._send(400, {"error": "empty input"})
+                jdg = backends.snapshot()["judge"]
                 return self._send(200, detect.score_text(
-                    text, use_model=bool(data.get("use_judge", True)),
-                    base=convert.JUDGE["base"], model=convert.JUDGE["model"],
-                    profile=data.get("profile", "claude")))
+                    text, use_model=bool(data.get("use_judge", True) and jdg),
+                    base=(jdg or {}).get("base", ""), model=(jdg or {}).get("model", ""),
+                    profile=data.get("profile", "claude"),
+                    off_reason=("disabled" if jdg else
+                                "no llama.cpp judge configured (CLAUDEIFY_JUDGE)")))
 
             return self._send(404, {"error": "not found"})
 
@@ -194,26 +197,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- health -----------------------------------------------------------
     @staticmethod
-    def _probe(name, cfg):
-        """A refused connection means down. A timeout means the server is alive
-        but busy (one slot, mid-generation): it must stay selectable, or the UI
-        silently falls back to the first backend that answered in time."""
-        try:
-            with urllib.request.urlopen(cfg["base"] + "/v1/models", timeout=4) as r:
-                json.loads(r.read().decode())
-            return name, {"up": True, "model": cfg["model"], "base": cfg["base"]}
-        except Exception as exc:
-            reason = getattr(exc, "reason", exc)
-            if isinstance(reason, (socket.timeout, TimeoutError)) or "timed out" in str(reason):
-                return name, {"up": True, "busy": True, "model": cfg["model"], "base": cfg["base"]}
-            return name, {"up": False, "model": cfg["model"],
-                          "base": cfg["base"], "error": str(exc)[:120]}
-
-    @staticmethod
     def _health():
-        with ThreadPoolExecutor(max_workers=len(convert.BACKENDS)) as ex:
-            res = list(ex.map(lambda kv: Handler._probe(*kv), convert.BACKENDS.items()))
-        return dict(res)
+        return backends.snapshot(force=True)
 
 
 def main():
@@ -227,8 +212,13 @@ def main():
     srv = Server((a.host, a.port), Handler)
     print("claudeify -> http://%s:%d   allow: %s   (ctrl-c to stop)"
           % (a.host, a.port, a.allow))
-    for name, st in Handler._health().items():
-        print("  %-6s %-16s %s" % (name, st["model"], "up" if st["up"] else "DOWN"))
+    snap = Handler._health()
+    for name, st in snap["backends"].items():
+        print("  %-28s %s" % (st["model"], "busy" if st["busy"] else "up" if st["up"] else "DOWN"))
+    if not snap["backends"]:
+        print("  " + backends.no_models_message(snap))
+    print("  perplexity pass: %s" % ("on (%s)" % snap["judge"]["base"] if snap["judge"]
+          else "off (no llama.cpp judge; set CLAUDEIFY_JUDGE)"))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

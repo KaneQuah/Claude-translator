@@ -1,7 +1,8 @@
 """Benchmark backends on the restyle task: style score, content fidelity, time."""
-import json, sys, time
-sys.path.insert(0, "/home/kane/ai-stack/claudeify")
-import convert, detect, verify
+import json, os, sys, time
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import backends, convert, detect, verify
 
 
 CASES = [
@@ -22,7 +23,7 @@ import os
 PASSES = int(os.environ.get("PASSES", "1"))
 TARGET = float(os.environ.get("TARGET", "70"))
 MODELS = sys.argv[1:] or ["mid", "heavy"]
-MODELS = [b for b in MODELS if b in convert.BACKENDS]
+MODELS = [b for b in MODELS if b in backends.snapshot()["backends"]]
 print("benchmarking:", MODELS, flush=True)
 rows = []
 
@@ -54,7 +55,7 @@ for backend in MODELS:
         rows.append(row)
         print(json.dumps({k: v for k, v in row.items() if k != "output"}), flush=True)
 
-out_path = "/home/kane/ai-stack/claudeify/bench-%s-p%d.json" % ("-".join(MODELS), PASSES)
+out_path = os.path.join(HERE, "bench-%s-p%d.json" % ("-".join(MODELS), PASSES))
 with open(out_path, "w") as f:
     json.dump(rows, f, indent=1, ensure_ascii=False)
 print("DONE ->", out_path)

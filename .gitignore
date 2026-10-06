@@ -10,3 +10,6 @@ __pycache__/
 bench-*.json
 yield-results*.json
 marker-tokens.json
+
+# Per-machine model wiring; copy backends.example.json to create one.
+backends.json

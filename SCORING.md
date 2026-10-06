@@ -73,7 +73,7 @@ Claude voice uses its hand-weighted score for both jobs.
 
 ## The perplexity pass
 
-A small local model (Qwen 3.5 2B on `:6770`) reads the text. At 24 evenly spaced
+A small local llama.cpp model (Qwen 3.5 2B in the author's setup) reads the text. At 24 evenly spaced
 positions (28 for `/api/score`) it is shown everything before that point and asked for its top 20
 guesses for the next token. Three numbers come out:
 

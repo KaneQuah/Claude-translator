@@ -16,9 +16,9 @@ import re
 import secrets
 import urllib.request
 
+import backends
 import sanitize
 
-AUDITOR = {"base": "http://127.0.0.1:6767", "model": "qwen3.6-35b-a3b"}
 
 PROMPT = """\
 You are auditing a stylistic rewrite. The rewrite was supposed to change the
@@ -73,9 +73,15 @@ _JSON = re.compile(r"\{.*\}", re.S)
 _THINK = re.compile(r"<think>.*?</think>", re.S | re.I)
 
 
-def check(original, rewrite, base=None, model=None, timeout=300):
-    base = base or AUDITOR["base"]
-    model = model or AUDITOR["model"]
+def check(original, rewrite, base=None, model=None, timeout=300, backend=None):
+    if not base:
+        # A dedicated auditor if one is configured; otherwise whichever model the
+        # user is running (a model marking its own work is weaker, so say so in docs).
+        try:
+            a = backends.auditor() or backends.resolve(backend)
+        except Exception as exc:
+            return {"available": False, "reason": str(exc)[:200]}
+        base, model = a["base"], a["model"]
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": PROMPT % {
@@ -83,14 +89,9 @@ def check(original, rewrite, base=None, model=None, timeout=300):
             "r": sanitize.clean_input(rewrite)}}],
         "temperature": 0.1,
         "max_tokens": 700,
-        "chat_template_kwargs": {"enable_thinking": False},
     }
-    req = urllib.request.Request(
-        base + "/v1/chat/completions", data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = json.loads(r.read().decode())["choices"][0]["message"]["content"]
+        raw = backends.post_chat(payload, base, timeout)["choices"][0]["message"]["content"]
     except Exception as exc:
         return {"available": False, "reason": str(exc)[:200]}
 

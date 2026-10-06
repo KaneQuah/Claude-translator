@@ -418,7 +418,7 @@ def predictability(text, base="http://127.0.0.1:6770", model="qwen3.5-2b",
 
 def score_text(text, use_model=True, base="http://127.0.0.1:6770",
                model="qwen3.5-2b", samples=28, profile="generic",
-               weights="fitted"):
+               weights="fitted", off_reason="disabled"):
     sty = stylometrics(text, profile)
 
     # The generic profile prefers the fitted model when one is on disk; the
@@ -445,7 +445,7 @@ def score_text(text, use_model=True, base="http://127.0.0.1:6770",
     else:
         sty = dict(sty, weights="heuristic", detectability=None)
     pred = predictability(text, base, model, samples) if use_model else \
-        {"available": False, "reason": "disabled"}
+        {"available": False, "reason": off_reason}
 
     if pred.get("available"):
         combined = 0.62 * sty["score"] + 0.38 * pred["score"]

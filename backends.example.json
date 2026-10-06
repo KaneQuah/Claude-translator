@@ -1,0 +1,9 @@
+{
+  "_comment": "Optional. Copy to backends.json to pin names, models and roles; otherwise claudeify discovers models from CLAUDEIFY_ENDPOINT (default: Ollama on :11434 and llama-server on :8080).",
+  "default": "gemma",
+  "backends": {
+    "gemma": {"base": "http://127.0.0.1:11434", "model": "gemma4:26b"}
+  },
+  "judge":   {"base": "http://127.0.0.1:8080", "model": "any-name"},
+  "auditor": {"base": "http://127.0.0.1:11434", "model": "gemma4:26b"}
+}

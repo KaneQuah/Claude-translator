@@ -1,27 +1,104 @@
 # claudeify
 
-Paste text in, get it back in assistant voice. Your meaning, machine's register.
+**Paste text in, get it back in Claude's voice, using a model that runs on your own machine.**
+Your meaning, an assistant's register. No API keys, no cloud calls, no pip installs.
 
-The default voice is Claude's (`--profile claude`); `--profile generic` gives plain
-assistant prose. The voice changes what the score means: generic is scored by a model
-fitted on human-vs-machine text, Claude by hand-picked weights that were never checked
-against a detector. On ten Pangram checks the generic voice was flagged and the Claude
-voice read as human. How the number is built, and what is and isn't validated, is in
-[SCORING.md](SCORING.md).
+![claudeify web UI showing a converted note and its score](docs/screenshot.jpg)
 
-Everything runs against the llama.cpp servers already on this box. No network
-egress beyond `127.0.0.1`, no API keys, no third-party services, zero pip
-dependencies — Python standard library only.
+It restyles; it does not rewrite. The prompt's top rule is *never respond to the
+input, only restyle it*, so a rant stays a rant, a question stays a question, and
+nonsense stays nonsense, just wearing a different voice. Then it scores the result and
+retries until it hits a target, naming the markers the last draft was thin on.
+
+> **What this is not.** It is not a tool for passing machine text off as human, and it
+> is not a detector. The score is a rehearsal built from stylometry and a small model's
+> predictability, and on a real detector (Pangram) it missed. [SCORING.md](SCORING.md)
+> says exactly what is and isn't validated.
+
+## Quick start (Ollama)
+
+You need Python 3 and a model server. Ollama is the easy one.
 
 ```bash
-./run.sh              # then open http://127.0.0.1:7080
+# 1. Install Ollama (https://ollama.com/download), then pull a model that fits your GPU:
+ollama pull gemma4:12b        # 8-12 GB of VRAM
+ollama pull gemma4:26b        # 20 GB+ of VRAM (or slower, with CPU offload)
+
+# 2. Get claudeify and start it
+git clone https://github.com/KaneQuah/Claude-translator.git
+cd Claude-translator
+./run.sh                      # then open http://127.0.0.1:7080
 ```
 
-`run.sh` listens on all interfaces, so a phone or laptop on your Tailscale network
-(`http://<tailscale-ip>:7080`) or your LAN can use it. Only `:7080` is exposed; the
-llama.cpp servers behind it stay on `127.0.0.1`. `HOST=127.0.0.1 ./run.sh` keeps it
-local. There is no login: reachability is the access control. See
-[Network exposure and input hygiene](#network-exposure-and-input-hygiene).
+That is all. claudeify asks Ollama which models you have and offers them in the
+**Model** dropdown, with Gemma 4 26B preselected if you have it.
+
+### Pointing it at your model server
+
+claudeify talks to any server with the OpenAI-compatible API: Ollama, llama.cpp's
+`llama-server`, LM Studio, vLLM. Set `CLAUDEIFY_ENDPOINT` to its address (comma-separate
+several):
+
+```bash
+CLAUDEIFY_ENDPOINT=http://192.168.1.50:11434 ./run.sh       # Ollama on another machine
+CLAUDEIFY_ENDPOINT=http://127.0.0.1:1234 ./run.sh           # LM Studio
+CLAUDEIFY_MODEL=gemma4:12b ./run.sh                         # preselect a model
+```
+
+If Ollama runs on a different machine, start it there with `OLLAMA_HOST=0.0.0.0` so it
+listens on the network. The default, when you set nothing, is Ollama on
+`127.0.0.1:11434` and `llama-server` on `127.0.0.1:8080`.
+
+### How does it know which models you have?
+
+It asks. When the page loads (results are cached for 10 seconds), claudeify calls
+`GET /v1/models` on each endpoint and lists whatever comes back, so a model you `ollama pull`
+shows up without any config. It never scans your disk. Embedding models are filtered out by
+name, and a server too slow to answer (mid-generation) shows as *busy* but stays selectable.
+`/api/health` shows exactly what it found. To pin names or roles by hand, copy
+`backends.example.json` to `backends.json`.
+
+### Optional: the perplexity pass (needs llama.cpp)
+
+The score can include a second opinion: a small model reads your text and measures how
+predictable each next word was ([what that is](SCORING.md#the-perplexity-pass)). That needs
+per-token probabilities for text the model did not write, which **Ollama's API cannot
+give** (no `logprobs`, no tokenize endpoint), so this one pass is pinned to
+[llama.cpp](https://github.com/ggml-org/llama.cpp) whatever model does the restyling:
+
+```bash
+llama-server -m Qwen3.5-2B-Q4_K_M.gguf --port 8080      # any small model; found automatically
+# or point at one elsewhere: CLAUDEIFY_JUDGE=http://host:port
+```
+
+Without it, the checkbox is greyed out with an explanation and the score uses style
+markers alone. A small model other than the restyler is best, because a model judging its
+own output finds it unusually predictable. (The judge on `:8080` also shows up in the
+model list; don't pick it, a 2B model fails the restyle task.)
+
+### Hardware and model recommendations
+
+Measured on the same four inputs for every model; see [Model choice, measured](#model-choice-measured) below.
+
+| Your GPU memory | Run | Why |
+|---|---|---|
+| **20 GB or more** | `gemma4:26b` (Gemma 4 26B-A4B, MoE) | Best fidelity measured: 0.76 invented claims per 100 words against 3-5 for the others (n=4). Only ~4B parameters active, so it is fast. |
+| **16 GB** | Gemma 4 26B-A4B as a ~4-bit GGUF through llama.cpp (`UD-IQ4_XS`, 12.6 GB of weights) | Fits, barely: 16.2 of 17.2 GB used at an 8k context. Ollama's `gemma4:26b` is a 16-19 GB download and won't fit. |
+| **8-12 GB** | `gemma4:12b` | Tied the 26B on style at 20 samples each (47.8 vs 48.7, both ±5). Fidelity was not re-measured, so the 26B may still be more faithful. |
+| **No GPU / under 8 GB** | works, with a catch | A 12B on 18 CPU threads took ~38 s a pass. Models of 4B and under tended to pad, drift or return the input unchanged. |
+
+Hardware actually tested: Radeon RX 7800 XT (16 GB), Tesla P100 (16 GB), GeForce RTX 4060
+(8 GB). Gemma 4 26B ran at about 3.5 s a pass on both 16 GB cards; the 12B at 1.7 s on the
+7800 XT. The 20 GB, 8-12 GB and no-GPU rows are inferred from model sizes and the runs above, not
+benchmarked on that hardware. Avoid models whose thinking can't be switched off (one 30B model returned empty
+output under every setting).
+
+### What I have and haven't tested
+
+Built and tested against llama.cpp's server. Ollama's documented API matches what claudeify
+uses (`/v1/models`, `/v1/chat/completions`, `reasoning_effort` to turn thinking off), and a
+request that an endpoint rejects is retried without the extra fields, but **I have not run it
+against a live Ollama**. If it misbehaves there, please open an issue.
 
 ---
 
@@ -46,7 +123,7 @@ the original and reports any claim that was added, dropped, or contradicted.
 
 | Constraint | How it is met |
 |---|---|
-| Local models only, no online APIs | llama.cpp on `:6767` / `:6768` / `:6770`; stdlib `urllib` to loopback only (the page itself is served to Tailscale/LAN clients) |
+| Local models only, no online APIs | Talks only to the model servers you point it at (default `127.0.0.1`); stdlib `urllib`. The page itself is served to Tailscale/LAN clients you allow |
 | Keep the meaning of the original | Rule 2 of the system prompt, plus `verify.py` as an independent check |
 | Nonsense must survive as nonsense | Rule 3, weighted above fluency — the model is told not to repair anything |
 | Output should read as AI-written | The scorer drives the retry loop, but it is tuned to generic LLM prose; the default Claude voice is chosen for register, and an external detector may read it as human (see below) |
@@ -63,7 +140,7 @@ domestic setting." Nothing resolved, nothing explained away.
 
 Left pane, your text. Right pane, the conversion. Underneath:
 
-- **Voice** — `Generic AI` or `Claude's tics`. Not the same target: generic
+- **Voice** — `Claude` (default) or `Generic AI`. Not the same target: generic
   machine prose is metronomic, while Claude's most-cited tic is the punchy
   fragment ("Not a detail. A design decision."), which is *high* burstiness.
   The two profiles score burstiness in opposite directions and use different
@@ -71,10 +148,9 @@ Left pane, your text. Right pane, the conversion. Underneath:
 - **Intensity** — `subtle` / `standard` / `maximal`. Maximal is deliberately a
   parody of itself.
 - **Shape** — match the input, force prose, or force bullets-with-bold-lead-ins.
-- **Model** — `heavy` (35B MoE, the default and the only one that reliably
-  respects the content rules), `mid` (8B), `small` (2B). The smaller two are
-  faster and drift: the 8B, handed a note about a broken coffee machine,
-  invented "beans", "habits", and "routine, ritual, and repair".
+- **Model** — whatever your server lists. Bigger and mixture-of-experts models hold
+  the content rules best; small ones drift (an 8B, handed a note about a broken coffee
+  machine, invented "beans", "habits", and "routine, ritual, and repair").
 - **Target score / max passes** — the retry loop's stopping condition.
 - **perplexity pass** — include the model-based predictability signal. Costs
   most of the wall time; turn it off for fast iteration.
@@ -195,13 +271,14 @@ something to forge. `RESEARCH.md` §3 covers this properly.
 ```bash
 python3 convert.py "your text here"
 echo "your text" | python3 convert.py -i maximal -s prose
-python3 convert.py --json -b small --no-judge "quick pass"
+python3 convert.py --json -b gemma4:12b --no-judge "quick pass"
 ```
 
 ```
 -i/--intensity   subtle | standard | maximal      (default: standard)
 -s/--shape       auto | prose | structured        (default: auto)
--b/--backend     heavy | mid | small              (default: heavy)
+-p/--profile     claude | generic                 (default: claude)
+-b/--backend     a model name your server lists   (default: auto)
 -t/--target      score to stop at                 (default: 70)
 -n/--max-attempts                                 (default: 3)
 --no-judge       skip the perplexity pass (much faster)
@@ -216,18 +293,20 @@ gives you a clean file.
 ## HTTP API
 
 ```
-GET  /api/health                                    backend status
-POST /api/convert  {text, intensity, shape, backend, target,
+GET  /api/health                                    models found, default, judge, endpoints
+POST /api/convert  {text, profile, intensity, shape, backend, target,
                     max_attempts, use_judge, disclosure, invisible}
-POST /api/score    {text, use_judge}                score without converting
-POST /api/verify   {original, rewrite}              fidelity audit
+POST /api/score    {text, profile, use_judge}       score without converting
+POST /api/verify   {original, rewrite, backend}     fidelity audit
 ```
 
 ## Files
 
 ```
-server.py       stdlib HTTP server + JSON API
+server.py       stdlib HTTP server + JSON API, access control
 ui.html         the single-page front end
+backends.py     finds models (GET /v1/models), picks defaults, the llama.cpp judge
+sanitize.py     input hygiene before text reaches a prompt
 convert.py      restyle pipeline, retry loop, marker helpers, CLI
 style.py        the register specification and retry hints
 detect.py       stylometric + fitted + perplexity scoring
@@ -237,13 +316,14 @@ bench.py        model comparison        crossgen_eval.py  held-out-generator che
 fit_weights.py  logistic fit            yield_test.py     SFT-viability measurement
 sample_raid.py  human corpus            gen_modern_par.py machine corpus
 wiki_markers_eval.py  Wikipedia "signs of AI writing" markers, measured (not adopted)
+SCORING.md      how the score is computed, and what is validated
 RESEARCH.md     detection, markers, watermarking, prior art
 ATTRIBUTION.md  licences, and what is deliberately not shipped
 ```
 
-`corpus/` holds only the small derived samples (~6 MB). The 11.8 GB RAID
-`train.csv` is not kept — `sample_raid.py` prints the one-line `hf download`
-that fetches it if you want to re-derive the human corpus.
+`corpus/` is not in the repo: it embeds third-party human text (see `ATTRIBUTION.md`).
+`sample_raid.py` prints the one-line `hf download` that fetches RAID, and
+`sample_raid.py` + `gen_modern_par.py` rebuild it locally in a few minutes.
 
 ## Model choice, measured
 
@@ -258,8 +338,8 @@ shape, fidelity audited by the Qwen 35B. `bench.py [backends...]` reproduces it;
 | `mid` — Qwen3-8B dense | 44.9 | 289 | 12 | 4.15 | 2.3 | 0/4 |
 | `heavy` — Qwen3.6-35B-A3B MoE | 66.2 | 438 | 17 | 3.88 | 15.5 | 0/4 |
 | `dense27` — Qwen3.8-27B dense (CPU) | 55.8 | 604 | 31 | 5.13 | 226.1 | 0/4 |
-| `gemma12` — Gemma-4-12B QAT (P100) | 60.3 | 224 | 7 | 3.12 | 5.0 | 0/4 |
-| **`gemma26` — Gemma-4-26B-A4B MoE (P100)** | 51.0 | 264 | **2** | **0.76** | **3.2** | **2/4** |
+| `gemma12` — Gemma-4-12B QAT (16 GB GPU) | 60.3 | 224 | 7 | 3.12 | 5.0 | 0/4 |
+| **`gemma26` — Gemma-4-26B-A4B MoE (16 GB GPU)** | 51.0 | 264 | **2** | **0.76** | **3.2** | **2/4** |
 
 **Gemma-4-26B-A4B is the default.** Five times more faithful than anything else
 tested, the fastest, the only backend that produced clean runs at all, and with
@@ -273,6 +353,18 @@ not Gemma's, so if anything the gap understates Gemma.
 I had predicted a dense 27B would beat the 35B MoE, reasoning that adherence
 tracks *active* parameters. Wrong twice over: the dense 27B came last, and the
 winner is another ~4B-active MoE.
+
+**Later, wider run (13 models, same four inputs, one pass each).** Style density ranged
+from 10.8 (Qwen3.5-2B, which returned the input nearly verbatim) to 66.2 (Qwen3.5-4B,
+which got there by padding to 4.2x the input length). Re-run at 20 samples each,
+**Gemma 4 12B and 26B tie on style**: 47.8 +/- 11.2 against 48.7 +/- 15.9. The 59.1 vs 40.6
+gap in the single-run table was noise; the 12B takes 1.7 s a pass against 3.4 s on the same
+GPU, in half the memory. Fidelity was not re-measured at that sample size, so the 26B's
+lead in invented claims (above) is the open question. Single cells at temperature 0.8
+carry roughly +/-10, so gaps under about 8 points between neighbours are not rankings.
+Three quantisations of one 27B moved style by 6.5 points: precision is not the lever,
+model choice is. One 30B model could not be used at all (empty output, thinking cannot be
+switched off).
 
 ### Style and fidelity are the same dial
 
@@ -344,7 +436,7 @@ Two things follow. The aggressive combination — heavy marking *and* near-zero
 invention — is one this model simply never produces, in 64 samples, so there is
 nothing to distil for it. But at a realistic bar the good tail carries **25%** of
 the mass, which is a perfectly workable rejection-sampling yield: ~4,000
-generations (≈3.3 h on the P100) would buy ~1,000 SFT pairs, and the labelling
+generations (≈3.3 h on a 16 GB GPU) would buy ~1,000 SFT pairs, and the labelling
 machinery already exists (`convert.py` generates, `verify.py` labels).
 
 **The reason to skip it anyway: the retry loop is already best-of-N over that
@@ -354,23 +446,20 @@ draft harvests most of what an SFT pass would distil. Prompting reaches style
 passes (latency) or push past style 70 at low drift — which prompting never
 reaches — and not otherwise.
 
-### Running Gemma on the P100
+### Running Gemma 4 on llama.cpp
 
-`llama.cpp` orders CUDA devices **fastest-first**, so on this box the RTX 4060 is
-`CUDA0` and the P100 is `CUDA1`. `CUDA_VISIBLE_DEVICES=0` silently targets the
-4060 — which is how I first "diagnosed" a broken P100 that was in fact idle and
-healthy. Set `CUDA_DEVICE_ORDER=PCI_BUS_ID` and the ordering matches `nvidia-smi`.
-
-Gemma 4 is a thinking model: without `--reasoning-budget 0` the entire token
-budget goes to `reasoning_content` and `content` comes back empty.
+If you use `llama-server` instead of Ollama, two things bite. Gemma 4 is a thinking model:
+without `--reasoning-budget 0` the entire token budget goes to `reasoning_content` and
+`content` comes back empty. And on multi-GPU machines llama.cpp orders CUDA devices
+**fastest-first**, not by PCI slot, so `CUDA_VISIBLE_DEVICES=0` may silently pick the wrong
+card (it once looked like a dead GPU that was merely idle). Set
+`CUDA_DEVICE_ORDER=PCI_BUS_ID` and the ordering matches `nvidia-smi`.
 
 ```bash
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0 \
-  /scratch/build/llama-cuda-p100/bin/llama-server \
-  --model Models/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf --alias gemma-4-26b-a4b \
-  --gpu-layers 99 --ctx-size 8192 --flash-attn on \
-  --cache-type-k q8_0 --cache-type-v q8_0 --jinja --reasoning-budget 0 \
-  --host 127.0.0.1 --port 6773
+llama-server --model gemma-4-26B-A4B-it-UD-IQ4_XS.gguf --alias gemma-4-26b-a4b \
+  --ctx-size 8192 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 \
+  --jinja --reasoning-budget 0 --host 127.0.0.1 --port 8081
+CLAUDEIFY_ENDPOINT=http://127.0.0.1:8081 ./run.sh
 ```
 
 ## Is the Claude voice actually Claude's?

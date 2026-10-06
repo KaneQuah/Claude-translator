@@ -7,8 +7,8 @@ is the yield of an SFT corpus built by rejection sampling -- if it is decent,
 fine-tuning is cheap; if it is near zero, prompting is not the bottleneck, the
 objective is.
 """
-import json, sys, time
-sys.path.insert(0, "/home/kane/ai-stack/claudeify")
+import json, os, sys, time
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import convert, detect, verify
 
 INPUTS_SHORT = [
