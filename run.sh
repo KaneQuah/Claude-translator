@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start the claudeify UI. Loopback only.
+# Start the claudeify UI on all interfaces; server.py drops any client outside
+# its --allow list (loopback, Tailscale, private LAN). HOST=127.0.0.1 to stay local.
 set -euo pipefail
 cd "$(dirname "$0")"
 PORT="${1:-7080}"
@@ -9,4 +10,4 @@ if [ -n "$PID" ]; then
   kill "$PID" 2>/dev/null || true
   sleep 1
 fi
-exec python3 server.py --port "$PORT"
+exec python3 server.py --host "${HOST:-0.0.0.0}" --port "$PORT"

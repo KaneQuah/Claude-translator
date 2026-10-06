@@ -151,6 +151,7 @@
 </main>
 
 <script>
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
 const LABELS = {
   // fitted-model feature names
@@ -221,24 +222,24 @@ function render(report, inScore, attempts) {
 
   $('bars').innerHTML = Object.entries(sty.contributions).map(([k,v]) =>
     '<div class="bar"><span'+(v.pushes==='human'?' style="opacity:.55"':'')+'>'
-    +(LABELS[k]||k)+(v.pushes==='human'?' ↓':'')+'</span>'
+    +esc(LABELS[k]||k)+(v.pushes==='human'?' ↓':'')+'</span>'
     +'<b><i style="width:'+(v.strength*100).toFixed(0)+'%'
     +(v.pushes==='human'?';background:var(--muted)':'')+'"></i></b>'
     +'<span>'+(v.strength*100).toFixed(0)+'</span></div>').join('');
 
   let rows = ROWS.map(([k,l]) => sty.raw[k]==null ? '' :
-    '<tr><td>'+l+'</td><td>'+(typeof sty.raw[k]==='number'
+    '<tr><td>'+esc(l)+'</td><td>'+(typeof sty.raw[k]==='number'
       ? (Number.isInteger(sty.raw[k])?sty.raw[k]:sty.raw[k].toFixed(2))
-      : sty.raw[k])+'</td></tr>').join('');
+      : esc(sty.raw[k]))+'</td></tr>').join('');
   rows += '<tr><td>style density</td><td>'+(sty.style_density||0).toFixed(1)+'</td></tr>';
-  rows += '<tr><td>weights</td><td>'+(sty.weights||'?')+'</td></tr>';
+  rows += '<tr><td>weights</td><td>'+esc(sty.weights||'?')+'</td></tr>';
   if (pred && pred.available) {
     rows += '<tr><td>est. perplexity</td><td>'+pred.perplexity_est+'</td></tr>'
          +  '<tr><td>top-1 agreement</td><td>'+(pred.top1_agreement*100).toFixed(0)+'%</td></tr>'
          +  '<tr><td>mean logprob</td><td>'+pred.mean_logprob+'</td></tr>'
          +  '<tr><td>predictability score</td><td>'+pred.score.toFixed(1)+'</td></tr>';
   } else if (pred) {
-    rows += '<tr><td>predictability</td><td>'+(pred.reason||'n/a')+'</td></tr>';
+    rows += '<tr><td>predictability</td><td>'+esc(pred.reason||'n/a')+'</td></tr>';
   }
   $('raw').querySelector('tbody').innerHTML = rows;
   $('passlog').textContent = attempts
@@ -279,6 +280,8 @@ $('go').onclick = async () => {
   if (!d) return;
   $('out').textContent = d.output;
   render(d.report, d.input_report.score, d.attempts);
+  const sz = Object.entries(d.sanitized||{}).map(([k,v]) => v+' '+k.replace('_',' ')).join(', ');
+  if (sz) $('passlog').textContent += (($('passlog').textContent ? '   ' : '') + 'stripped from input: ' + sz);
 };
 
 $('scoreonly').onclick = async () => {
@@ -296,12 +299,12 @@ $('checkmeaning').onclick = async () => {
   if (!d) return;
   const box = $('fidelity');
   if (!d.available) { box.innerHTML = '<div class="note">Meaning check unavailable: '
-      + (d.reason||'') + '</div>'; return; }
+      + esc(d.reason||'') + '</div>'; return; }
   let html = '<div class="note" style="margin-top:12px"><b style="color:'
-    + (d.faithful ? 'var(--good)' : 'var(--warn)') + '">' + d.verdict + '</b>';
+    + (d.faithful ? 'var(--good)' : 'var(--warn)') + '">' + esc(d.verdict) + '</b>';
   for (const k of ['invented_fact','contradicted','dropped','rhetorical','evaluative'])
     for (const it of (d[k]||[]))
-      html += '<br><span class="pill">' + k + '</span> ' + it;
+      html += '<br><span class="pill">' + k + '</span> ' + esc(it);
   if (d.faithful) html += '<br>No propositions added, dropped, or contradicted.';
   box.innerHTML = html + '</div>';
 };

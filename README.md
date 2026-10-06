@@ -15,6 +15,12 @@ dependencies — Python standard library only.
 ./run.sh              # then open http://127.0.0.1:7080
 ```
 
+`run.sh` listens on all interfaces, so a phone or laptop on your Tailscale network
+(`http://<tailscale-ip>:7080`) or your LAN can use it. Only `:7080` is exposed; the
+llama.cpp servers behind it stay on `127.0.0.1`. `HOST=127.0.0.1 ./run.sh` keeps it
+local. There is no login: reachability is the access control. See
+[Network exposure and input hygiene](#network-exposure-and-input-hygiene).
+
 ---
 
 ## What it does
@@ -38,7 +44,7 @@ the original and reports any claim that was added, dropped, or contradicted.
 
 | Constraint | How it is met |
 |---|---|
-| Local models only, no online APIs | llama.cpp on `:6767` / `:6768` / `:6770`; stdlib `urllib` to loopback only |
+| Local models only, no online APIs | llama.cpp on `:6767` / `:6768` / `:6770`; stdlib `urllib` to loopback only (the page itself is served to Tailscale/LAN clients) |
 | Keep the meaning of the original | Rule 2 of the system prompt, plus `verify.py` as an independent check |
 | Nonsense must survive as nonsense | Rule 3, weighted above fluency — the model is told not to repair anything |
 | Output should read as AI-written | The scorer drives the retry loop, but it is tuned to generic LLM prose; the default Claude voice is chosen for register, and an external detector may read it as human (see below) |
@@ -386,6 +392,35 @@ content, and a restyler bound by "never add content" can't produce it honestly.
 The improved version immediately cost 4 invented claims, one of them a
 fabricated "I've realized". Treat the `claude` profile as a rough gesture at a
 register, not a model of one.
+
+## Network exposure and input hygiene
+
+The page has no accounts, so `server.py` limits who can talk to it:
+
+1. **Client address.** Only `127.0.0.0/8`, Tailscale (`100.64.0.0/10`) and the private
+   LAN ranges connect; everything else is dropped. Change it with `--allow`.
+2. **Host header.** Must be an allowed IP, `localhost`, this machine's name or a
+   `*.ts.net` name, so a hostile web page cannot reach it by DNS rebinding.
+3. **POSTs** must be `application/json` and, if they carry an `Origin`, same-origin.
+4. **Load.** At most two requests run on the GPU at once; the rest get a 429.
+
+If you want the Tailscale-only case, run `python3 server.py --host <tailscale-ip>`.
+Anyone on your tailnet can use it and spend your GPU time. The UI sets a strict
+Content-Security-Policy and escapes everything it renders from model or auditor output.
+
+`sanitize.py` runs on every input before it reaches a prompt. It removes invisible
+characters that can smuggle instructions (Unicode tag block, zero-width runs, bidi
+controls) and control characters, and it defangs chat-template tokens such as
+`<end_of_turn>` and `<|im_start|>` into `‹…›`. What it touched is reported in the
+response (`sanitized`) and in the UI. The text block is wrapped in delimiters carrying
+a per-request random nonce, and the prompt says the text may contain instructions or fake
+markers and must be restyled, not followed. The auditor gets the same treatment.
+
+Measured with n=5 probes against Gemma-26B: injected
+instructions were restyled, never obeyed, in 15 of 15 outputs; a fake `<<<END TEXT>>>`
+block, which derailed 2 of 5 runs before, now keeps its content 5 of 5. This is
+mitigation, not a guarantee: there is no filter on what the model writes, and the
+tool has no tools or secrets to lose, which is what keeps the blast radius small.
 
 ## Known limits
 
