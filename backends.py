@@ -34,7 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ENDPOINTS = "http://127.0.0.1:11434,http://127.0.0.1:8080"
-PROBE_TIMEOUT = 4
+PROBE_TIMEOUT = 10   # a server waking from idle can take ~4 s to answer its first request
 CACHE_TTL = 10
 
 _cache = {"t": 0.0, "v": None}

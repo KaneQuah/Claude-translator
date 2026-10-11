@@ -208,12 +208,19 @@ fetch('/api/health').then(r=>r.json()).then(h=>{
   }
   if (!h.default) {
     const where = h.endpoints.map(e=>e.base).join(', ') || 'backends.json';
-    $('err').textContent = 'No models found at ' + where + '. Start Ollama and pull one '
-      + '(ollama pull gemma4:26b), or set CLAUDEIFY_ENDPOINT. See the README.';
+    const slow = h.endpoints.some(e=>e.state==='busy');
+    $('err').textContent = slow
+      ? where + ' did not answer in time (busy or still waking up). Reload in a moment.'
+      : 'No models found at ' + where + '. Start Ollama and pull one '
+        + '(ollama pull gemma4:26b), or set CLAUDEIFY_ENDPOINT. See the README.';
   }
   if (!h.judge) {
     const j = $('judge');
     j.checked = false; j.disabled = true;
+    const why = document.createElement('span');
+    why.textContent = ' (needs llama.cpp, see README)';
+    why.style.opacity = '.7';
+    j.nextSibling.after(why);
     j.parentElement.title = 'Off: no llama.cpp server found for it. The perplexity pass needs '
       + 'llama.cpp (Ollama cannot supply per-token probabilities). Run llama-server on port 8080 '
       + 'or set CLAUDEIFY_JUDGE. Scores use style markers only.';

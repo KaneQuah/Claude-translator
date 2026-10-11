@@ -15,9 +15,24 @@ retries until it hits a target, naming the markers the last draft was thin on.
 > predictability, and on a real detector (Pangram) it missed. [SCORING.md](SCORING.md)
 > says exactly what is and isn't validated.
 
-## Quick start (Ollama)
+## Pick a setup
 
-You need Python 3 and a model server. Ollama is the easy one.
+You need Python 3 and a local model server. Both options below are **free and open
+source**; the difference is how much setup you want to do, not what you pay.
+
+| | **Ollama** | **llama.cpp** |
+|---|---|---|
+| Setup | **Fast.** One installer, one `ollama pull`. | A bit more involved: grab a [prebuilt release binary](https://github.com/ggml-org/llama.cpp/releases) (or build it), download a GGUF model, start `llama-server` with the right flags. |
+| Restyle, retry loop, meaning check | Yes | Yes |
+| Style score | Yes | Yes |
+| **Perplexity pass** (second score signal) | **No.** Ollama's API has no `logprobs` and no tokenize endpoint. The checkbox greys itself out and the score uses style markers only. | **Yes**, all features unlocked |
+| Best for | Trying it in five minutes | The full score, or squeezing a model onto a 16 GB card |
+
+**You can mix them.** The perplexity pass only needs a small model (about 2B parameters, which
+runs fine on a CPU). Keep Ollama for the restyling and start a tiny `llama-server` on port 8080
+purely as the judge; claudeify finds it on its own. See [the perplexity pass](#optional-the-perplexity-pass-needs-llamacpp).
+
+## Quick start (Ollama)
 
 ```bash
 # 1. Install Ollama (https://ollama.com/download), then pull a model that fits your GPU:
@@ -31,7 +46,9 @@ cd Claude-translator
 ```
 
 That is all. claudeify asks Ollama which models you have and offers them in the
-**Model** dropdown, with Gemma 4 26B preselected if you have it.
+**Model** dropdown, with Gemma 4 26B preselected if you have it. With Ollama alone, the
+perplexity pass is switched off (greyed out in the UI, with a note saying why) and
+everything else works; add llama.cpp below to unlock it.
 
 ### Pointing it at your model server
 
@@ -64,17 +81,26 @@ The score can include a second opinion: a small model reads your text and measur
 predictable each next word was ([what that is](SCORING.md#the-perplexity-pass)). That needs
 per-token probabilities for text the model did not write, which **Ollama's API cannot
 give** (no `logprobs`, no tokenize endpoint), so this one pass is pinned to
-[llama.cpp](https://github.com/ggml-org/llama.cpp) whatever model does the restyling:
+[llama.cpp](https://github.com/ggml-org/llama.cpp) whatever model does the restyling.
+llama.cpp is free and open source too; it just asks for a little more wrangling than Ollama.
+
+1. Download a **release binary** for your OS and GPU from the
+   [releases page](https://github.com/ggml-org/llama.cpp/releases) (Windows, macOS and Linux
+   builds, with CUDA, Vulkan, HIP and CPU variants), or build it from source.
+2. Download any small instruct model as a GGUF file (about 2B parameters; a 4-bit quant is a
+   1-2 GB file) from Hugging Face.
+3. Start the server on port 8080:
 
 ```bash
 llama-server -m Qwen3.5-2B-Q4_K_M.gguf --port 8080      # any small model; found automatically
 # or point at one elsewhere: CLAUDEIFY_JUDGE=http://host:port
 ```
 
-Without it, the checkbox is greyed out with an explanation and the score uses style
-markers alone. A small model other than the restyler is best, because a model judging its
-own output finds it unusually predictable. (The judge on `:8080` also shows up in the
-model list; don't pick it, a 2B model fails the restyle task.)
+Reload claudeify and the **perplexity pass** checkbox comes alive. Without a judge it is
+greyed out, labelled *needs llama.cpp*, and the score uses style markers alone; nothing else
+changes. A small model other than the restyler is best, because a model judging its own
+output finds it unusually predictable. (The judge on `:8080` also shows up in the model
+list; don't pick it, a 2B model fails the restyle task.)
 
 ### Hardware and model recommendations
 
@@ -109,7 +135,8 @@ Three things, in order:
 1. **Restyles.** A local model rewrites the text into assistant register, under
    a prompt whose top rule is *never respond to the input, only restyle it*.
 2. **Scores.** A detector measures how machine-written the result reads —
-   surface stylometry plus a real perplexity pass. Higher is the goal here.
+   surface stylometry, plus a perplexity pass when a llama.cpp judge is available.
+   Higher is the goal here.
 3. **Retries.** If the score is under target, it goes again, and the retry names
    the specific markers the draft was thin on. The score is the reward signal,
    so the loop actually converges rather than rerolling blindly.
